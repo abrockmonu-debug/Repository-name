@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Drop Merge</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #333;
+            color: #eee;
+            text-align: center;
+            cursor: default;
+        }
+        #gameCanvas {
+            background-color: #222;
+            border: 3px solid #666;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+        }
+        .info-panel {
+            margin-bottom: 20px;
+            font-size: 1.2em;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+            justify-content: center;
+        }
+        .controls button, .info-panel button {
+            padding: 8px 16px;
+            font-size: 0.9em;
+            cursor: pointer;
+            background-color: #555;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+            margin: 5px; /* Add some margin for better spacing */
+        }
+        .controls button:hover:not(:disabled), .info-panel button:hover:not(:disabled) {
+            background-color: #777;
+        }
+        .controls button.active {
+            background-color: #28a745;
+        }
+        .controls button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        #gameOverOverlay, #wheelSpinOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top */
+        }
+        #gameOverOverlay h2, #wheelSpinOverlay h2 {
+            font-size: 3em;
+            color: #fff;
+        }
+        #gameOverOverlay p, #wheelSpinOverlay p {
+            font-size: 1.5em;
+            color: #fff;
+        }
+        #reviveOptions {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Wheel specific styles */
+        #wheelContainer {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin-top: 20px;
+        }
+        #wheel {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 8px solid #ddd;
+            overflow: hidden;
+            position: relative;
+            transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1); /* Slower ease-out spin */
+            background-color: #f0f0f0;
+        }
+        .wheel-slice {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 50%;
+            transform-origin: 0% 100%;
+            background-color: #ccc;
+            border: 1px solid #aaa;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8em;
+            font-weight: bold;
+            color: #333;
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.5);
+            text-align: center;
+            padding: 5px;
+        }
+        /* Slice styling - rotate and color */
+        .slice-1 { transform: rotate(0deg) skewY(-30deg); background-color: #FFEB3B; } /* 10 Coins */
+        .slice-2 { transform: rotate(60deg) skewY(-30deg); background-color: #FFC107; } /* 20 Coins */
+        .slice-3 { transform: rotate(120deg) skewY(-30deg); background-color: #FF9800; } /* 30 Coins */
+        .slice-4 { transform: rotate(180deg) skewY(-30deg); background-color: #F44336; } /* Free Bomb */
+        .slice-5 { transform: rotate(240deg) skewY(-30deg); background-color: #9C27B0; } /* Free Hammer */
+        .slice-6 { transform: rotate(300deg) skewY(-30deg); background-color: #2196F3; } /* Free Swap */
+
+        .slice-text {
+            transform: skewY(30deg) rotate(30deg); /* Counter-skew and rotate text */
+            position: relative;
+            left: 25px; /* Adjust text position in slice */
+            width: 100%;
+        }
+
+        #wheelPointer {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid #f00; /* Red pointer */
+            top: -35px; /* Position above the wheel */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1001;
+        }
+        #spinButton {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 1.5em;
+            background-color: #28a745;
+            color: white;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.3);
+            transition: background-color 0.3s;
+        }
+        #spinButton:hover:not(:disabled) {
+            background-color: #218838;
+        }
+        #spinButton:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        #spinWheelCooldown {
+            margin-left: 10px;
+            font-size: 0.9em;
+            color: #bbb;
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h1>Drop Merge</h1>
+        <p>Score: <span id="score">0</span></p>
+        <p>Coins: <span id="coins">0</span> ⭕️</p>
+        <p>Next Block: <span id="nextBlock"></span></p>
+        <p id="message"></p>
+        <div class="controls">
+            <button id="howToPlayButton">How to Play</button>
+            <button id="abbreviationsButton">Number Abbreviations</button>
+            <button id="showCodeButton">Show Code</button>
+            <button id="spinWheelButton">Spin the Wheel!</button>
+            <span id="spinWheelCooldown"></span>
+        </div>
+        <div class="controls powerup-controls">
+            <button id="bombButton" class="powerup-button">💣<br/>(5 ⭕️)</button>
+            <button id="swapButton" class="powerup-button">⬅️➡️<br/>(10 ⭕️)</button>
+            <button id="hammerButton" class="powerup-button">🔨<br/>(15 ⭕️)</button>
+        </div>
+    </div>
+    <canvas id="gameCanvas" width="360" height="600"></canvas>
+
+    <div id="gameOverOverlay">
+        <h2 id="gameOverTitle">Game Over!</h2>
+        <p>Your score: <span id="finalScore">0</span></p>
+        <button id="restartButton">Restart Game</button>
+        <button id="reviveButton">Revive with Powerups</button>
+        <div id="reviveOptions">
+            <p>Choose a power-up to use:</p>
+            <div class="controls">
+                <button id="reviveBomb" class="powerup-button">💣<br/>(5 ⭕️)</button>
+                <button id="reviveSwap" class="powerup-button">⬅️➡️<br/>(10 ⭕️)</button>
+                <button id="reviveHammer" class="powerup-button">🔨<br/>(15 ⭕️)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="wheelSpinOverlay">
+        <h2>Spin the Wheel!</h2>
+        <div id="wheelContainer">
+            <div id="wheel">
+                <div class="wheel-slice slice-1"><span class="slice-text">10 Coins</span></div>
+                <div class="wheel-slice slice-2"><span class="slice-text">20 Coins</span></div>
+                <div class="wheel-slice slice-3"><span class="slice-text">30 Coins</span></div>
+                <div class="wheel-slice slice-4"><span class="slice-text">FREE Bomb</span></div>
+                <div class="wheel-slice slice-5"><span class="slice-text">FREE Hammer</span></div>
+                <div class="wheel-slice slice-6"><span class="slice-text">FREE Swap</span></div>
+            </div>
+            <div id="wheelPointer"></div>
+        </div>
+        <button id="spinButton">SPIN!</button>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const coinsElement = document.getElementById('coins');
+        const nextBlockElement = document.getElementById('nextBlock');
+        const messageElement = document.getElementById('message');
+        const bombButton = document.getElementById('bombButton');
+        const swapButton = document.getElementById('swapButton');
+        const hammerButton = document.getElementById('hammerButton');
+        const howToPlayButton = document.getElementById('howToPlayButton');
+        const abbreviationsButton = document.getElementById('abbreviationsButton');
+        const showCodeButton = document.getElementById('showCodeButton');
+        const spinWheelButton = document.getElementById('spinWheelButton');
+        const spinWheelCooldownElement = document.getElementById('spinWheelCooldown'); // New cooldown element
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const finalScoreElement = document.getElementById('finalScore');
+        const restartButton = document.getElementById('restartButton');
+        const reviveButton = document.getElementById('reviveButton');
+        const reviveOptions = document.getElementById('reviveOptions');
+        const reviveBombButton = document.getElementById('reviveBomb');
+        const reviveSwapButton = document.getElementById('reviveSwap');
+        const reviveHammerButton = document.getElementById('reviveHammer');
+        const wheelSpinOverlay = document.getElementById('wheelSpinOverlay');
+        const wheel = document.getElementById('wheel');
+        const spinButton = document.getElementById('spinButton');
+
+        const rows = 10;
+        const cols = 6;
+        const cellSize = canvas.width / cols;
+        const WILDCARD_VALUE = -1;
+        
+        let grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+        let score = 0;
+        let coins = 0;
+        let nextBlockValue;
+        let isDropping = false;
+        let isGameOver = false;
+        let activePowerup = null;
+        let firstSwapBlock = null;
+        let reviveUsed = false;
+        let isSpinning = false; // To prevent multiple spins
+        let spinCooldownTime = 60; // 60 seconds cooldown
+        let spinCooldownTimer;
+
+        const powerupCosts = {
+            bomb: 5,
+            swap: 10,
+            hammer: 15
+        };
+
+        const blockColors = {
+            1: '#E53935', 2: '#FB8C00', 3: '#FFEB3B', 4: '#4CAF50', 5: '#2196F3',
+            6: '#9C27B0', 7: '#000000', 8: '#795548', 9: '#F8E71C', 10: '#D7D625',
+            11: '#E53333', 12: '#E53333', 13: '#F8E71C', 14: '#D7D625', 15: '#97CC28',
+            [WILDCARD_VALUE]: '#FFD700'
+        };
+        // The numbers on the blocks (powers of 2)
+        const blockNumbers = {
+            1: 2, 2: 4, 3: 8, 4: 16, 5: 32, 6: 64, 7: 128, 8: 256, 9: 512, 10: 1024,
+            11: 2048, 12: 4096, 13: 8192, 14: 16384, 15: 32768, 16: 65536,
+            [WILDCARD_VALUE]: '?'
+        };
+
+        const wheelRewards = [
+            { name: '10 Coins', type: 'coins', value: 10 },        // Slice 1 (0 deg)
+            { name: '20 Coins', type: 'coins', value: 20 },        // Slice 2 (60 deg)
+            { name: '30 Coins', type: 'coins', value: 30 },        // Slice 3 (120 deg)
+            { name: 'FREE Bomb', type: 'powerup', value: 'bomb' }, // Slice 4 (180 deg)
+            { name: 'FREE Hammer', type: 'powerup', value: 'hammer' }, // Slice 5 (240 deg)
+            { name: 'FREE Swap', type: 'powerup', value: 'swap' }   // Slice 6 (300 deg)
+        ];
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const value = grid[r][c];
+                    if (value !== 0) {
+                        drawBlock(r, c, value);
+                    }
+                }
+            }
+        }
+
+        function drawBlock(r, c, value) {
+            ctx.fillStyle = blockColors[value] || '#fff';
+            ctx.fillRect(c * cellSize + 2, r * cellSize + 2, cellSize - 4, cellSize - 4);
+            
+            ctx.fillStyle = (value === 7 || value === WILDCARD_VALUE) ? '#fff' : '#000';
+            ctx.font = `${cellSize * 0.4}px 'Segoe UI', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText((value === WILDCARD_VALUE) ? '?' : blockNumbers[value], c * cellSize + cellSize / 2, r * cellSize + cellSize / 2);
+        }
+
+        function updateScore(points) {
+            score += points;
+            coins += Math.floor(points / 10);
+            scoreElement.textContent = coins; // Only update coins here
+            coinsElement.textContent = coins;
+            updatePowerupButtons();
+        }
+
+        function updateNextBlock() {
+            nextBlockValue = (Math.random() < 0.05) ? WILDCARD_VALUE : 1;
+            nextBlockElement.textContent = (nextBlockValue === WILDCARD_VALUE) ? '?' : blockNumbers[nextBlockValue];
+            nextBlockElement.style.color = blockColors[nextBlockValue];
+        }
+
+        async function dropBlock(col) {
+            if (isDropping || isGameOver || grid[0][col] !== 0) {
+                return;
+            }
+
+            isDropping = true;
+            let currentRow = 0;
+
+            let targetRow = -1;
+            for (let r = rows - 1; r >= 0; r--) {
+                if (grid[r][col] === 0) {
+                    targetRow = r;
+                    break;
+                }
+            }
+            if (targetRow === -1) {
+                isDropping = false;
+                checkGameOver();
+                return;
+            }
+
+            const drop = () => {
+                if (currentRow < targetRow) {
+                    grid[currentRow][col] = 0;
+                    currentRow++;
+                    grid[currentRow][col] = nextBlockValue;
+                    drawGrid();
+                    setTimeout(drop, 30);
+                } else {
+                    isDropping = false;
+                    checkAndMerge(targetRow, col);
+                }
+            };
+            grid[currentRow][col] = nextBlockValue;
+            drop();
+        }
+
+        function checkAndMerge(r, c) {
+            let merged = false;
+            let currentGrid = JSON.parse(JSON.stringify(grid));
+            
+            const check = (row, col) => {
+                const val = currentGrid[row][col];
+                if (val === 0) return;
+
+                if (row + 1 < rows && (currentGrid[row + 1][col] === val || currentGrid[row + 1][col] === WILDCARD_VALUE || val === WILDCARD_VALUE)) {
+                    const newValue = (currentGrid[row + 1][col] === WILDCARD_VALUE) ? val + 1 : val + 1;
+                    currentGrid[row + 1][col] = 0;
+                    currentGrid[row][col] = newValue;
+                    updateScore(blockNumbers[newValue]);
+                    merged = true;
+                    check(row, col);
+                }
+                if (col + 1 < cols && (currentGrid[row][col + 1] === val || currentGrid[row][col + 1] === WILDCARD_VALUE || val === WILDCARD_VALUE)) {
+                    const newValue = (currentGrid[row][col + 1] === WILDCARD_VALUE) ? val + 1 : val + 1;
+                    currentGrid[row][col + 1] = 0;
+                    currentGrid[row][col] = newValue;
+                    updateScore(blockNumbers[newValue]);
+                    merged = true;
+                    check(row, col);
+                }
+                if (col - 1 >= 0 && (currentGrid[row][col - 1] === val || currentGrid[row][col - 1] === WILDCARD_VALUE || val === WILDCARD_VALUE)) {
+                    const newValue = (currentGrid[row][col - 1] === WILDCARD_VALUE) ? val + 1 : val + 1;
+                    currentGrid[row][col - 1] = 0;
+                    currentGrid[row][col] = newValue;
+                    updateScore(blockNumbers[newValue]);
+                    merged = true;
+                    check(row, col);
+                }
+            };
+
+            check(r, c);
+            
+            if (merged) {
+                grid = currentGrid;
+                for(let i = 0; i < cols; i++) {
+                    collapseColumn(i);
+                }
+            }
+
+            drawGrid();
+            checkGameOver();
+            updateNextBlock();
+        }
+
+        function collapseColumn(c) {
+            let writeRow = rows - 1;
+            for (let r = rows - 1; r >= 0; r--) {
+                if (grid[r][c] !== 0) {
+                    grid[writeRow][c] = grid[r][c];
+                    if (r !== writeRow) {
+                        grid[r][c] = 0;
+                    }
+                    writeRow--;
+                }
+            }
+        }
+
+        function checkGameOver() {
+            if (grid[0].some(val => val !== 0)) {
+                isGameOver = true;
+                gameOverOverlay.style.display = 'flex';
+                finalScoreElement.textContent = score;
+                reviveButton.style.display = reviveUsed ? 'none' : 'block';
+            }
+        }
+        
+        function initGame() {
+            grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+            
+            // Add initial blocks to the bottom row
+            const initialBlocks = [1, 2, 3, 4, 5, 6];
+            const bottomRow = rows - 1;
+            for (let i = 0; i < initialBlocks.length; i++) {
+                grid[bottomRow][i] = initialBlocks[i];
+            }
+
+            score = 0;
+            coins = 0;
+            isGameOver = false;
+            activePowerup = null;
+            firstSwapBlock = null;
+            reviveUsed = false;
+            
+            // Reset cooldown on new game
+            clearInterval(spinCooldownTimer);
+            spinWheelButton.disabled = false;
+            spinWheelCooldownElement.textContent = '';
+            
+            updateScore(0);
+            updateNextBlock();
+            drawGrid();
+            messageElement.textContent = '';
+            gameOverOverlay.style.display = 'none';
+            reviveOptions.style.display = 'none';
+        }
+
+        function setActivePowerup(powerup) {
+            activePowerup = null;
+            firstSwapBlock = null;
+            messageElement.textContent = '';
+            document.querySelectorAll('.powerup-button').forEach(btn => btn.classList.remove('active'));
+
+            if (powerup) {
+                activePowerup = powerup;
+                messageElement.textContent = `Active: ${powerup}`;
+                document.getElementById(powerup + 'Button').classList.add('active');
+            }
+        }
+
+        function updatePowerupButtons() {
+            bombButton.disabled = coins < powerupCosts.bomb;
+            swapButton.disabled = coins < powerupCosts.swap;
+            hammerButton.disabled = coins < powerupCosts.hammer;
+            reviveBombButton.disabled = coins < powerupCosts.bomb;
+            reviveSwapButton.disabled = coins < powerupCosts.swap;
+            reviveHammerButton.disabled = coins < powerupCosts.hammer;
+        }
+
+        function awardWheelReward(reward) {
+            if (reward.type === 'coins') {
+                coins += reward.value;
+                coinsElement.textContent = coins;
+                messageElement.textContent = `You won ${reward.value} coins!`;
+            } else if (reward.type === 'powerup') {
+                if (reward.value === 'bomb') {
+                    setActivePowerup('bomb');
+                    messageElement.textContent = `You won a FREE Bomb! Click a column to use.`;
+                } else if (reward.value === 'hammer') {
+                    setActivePowerup('hammer');
+                    messageElement.textContent = `You won a FREE Hammer! Click a block to use.`;
+                } else if (reward.value === 'swap') {
+                    setActivePowerup('swap');
+                    messageElement.textContent = `You won a FREE Swap! Click two blocks to use.`;
+                }
+            }
+        }
+        
+        function startSpinCooldown() {
+            spinWheelButton.disabled = true;
+            let timeLeft = spinCooldownTime;
+            spinWheelCooldownElement.textContent = `(${timeLeft}s)`;
+
+            spinCooldownTimer = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    clearInterval(spinCooldownTimer);
+                    spinWheelButton.disabled = false;
+                    spinWheelCooldownElement.textContent = '';
+                    messageElement.textContent = 'Spin the Wheel is ready!';
+                } else {
+                    spinWheelCooldownElement.textContent = `(${timeLeft}s)`;
+                }
+            }, 1000);
+        }
+
+        // --- Event Listeners ---
+        bombButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.bomb) {
+                coins -= powerupCosts.bomb;
+                coinsElement.textContent = coins;
+                setActivePowerup('bomb');
+            } else {
+                messageElement.textContent = 'Not enough coins!';
+            }
+            updatePowerupButtons();
+        });
+
+        swapButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.swap) {
+                coins -= powerupCosts.swap;
+                coinsElement.textContent = coins;
+                setActivePowerup('swap');
+            } else {
+                messageElement.textContent = 'Not enough coins!';
+            }
+            updatePowerupButtons();
+        });
+
+        hammerButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.hammer) {
+                coins -= powerupCosts.hammer;
+                coinsElement.textContent = coins;
+                setActivePowerup('hammer');
+            } else {
+                messageElement.textContent = 'Not enough coins!';
+            }
+            updatePowerupButtons();
+        });
+
+        canvas.addEventListener('click', (event) => {
+            if (isGameOver) {
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const col = Math.floor(x / cellSize);
+            const row = Math.floor(y / cellSize);
+
+            if (activePowerup) {
+                switch (activePowerup) {
+                    case 'bomb':
+                        if (col >= 0 && col < cols) {
+                            for (let r = 0; r < rows; r++) {
+                                grid[r][col] = 0;
+                            }
+                            // Also clear affected cells in currentGrid
+                            let tempGrid = JSON.parse(JSON.stringify(grid));
+                            for (let r = 0; r < rows; r++) {
+                                tempGrid[r][col] = 0;
+                            }
+                            grid = tempGrid;
+                            
+                            drawGrid();
+                            setActivePowerup(null);
+                        }
+                        break;
+                    case 'swap':
+                        if (firstSwapBlock) {
+                            const [r1, c1] = firstSwapBlock;
+                            const r2 = row;
+                            const c2 = col;
+                            const temp = grid[r1][c1];
+                            grid[r1][c1] = grid[r2][c2];
+                            grid[r2][c2] = temp;
+                            drawGrid();
+                            setActivePowerup(null);
+                            firstSwapBlock = null;
+                        } else {
+                            firstSwapBlock = [row, col];
+                            messageElement.textContent = 'Select second block to swap.';
+                        }
+                        break;
+                    case 'hammer':
+                        if (grid[row][col] !== 0) {
+                            grid[row][col] = 0;
+                            drawGrid();
+                            setActivePowerup(null);
+                        }
+                        break;
+                }
+            } else {
+                dropBlock(col);
+            }
+        });
+
+        // Keyboard Input Listener (still included for non-iPad users)
+        document.addEventListener('keydown', (event) => {
+            if (isGameOver || isDropping || wheelSpinOverlay.style.display === 'flex') {
+                return;
+            }
+            const key = event.key;
+            if (key >= '1' && key <= '6') {
+                const col = parseInt(key) - 1;
+                dropBlock(col);
+            }
+        });
+
+        howToPlayButton.addEventListener('click', () => {
+            alert(
+                'How to Play Drop Merge:\n\n' +
+                'Objective: Merge number blocks to get higher scores and prevent the grid from filling up.\n\n' +
+                'Gameplay:\n' +
+                '1. Tap a column (or press 1-6 on keyboard) to drop the "Next Block".\n' +
+                '2. Two identical blocks merge into a block of the next number (e.g., two 2s make a 4).\n' +
+                '3. Wildcard blocks (?) merge with any adjacent block.\n\n' +
+                'Coins & Powerups:\n' +
+                ' - Earn coins by merging blocks (1 coin for every 10 points).\n' +
+                ' - Use coins to buy power-ups:\n' +
+                '   - 💣 Bomb: Clears an entire column (5 ⭕️).\n' +
+                '   - ⬅️➡️ Swap: Swaps the positions of two blocks (10 ⭕️).\n' +
+                '   - 🔨 Hammer: Removes a single block (15 ⭕️).\n\n' +
+                'Spin the Wheel:\n' +
+                ' - Get free rewards every 60 seconds!\n\n' +
+                'Game Over & Revive:\n' +
+                ' - The game ends if a block reaches the top row.\n' +
+                ' - You can revive once per game by using a power-up on the Game Over screen.\n\n' +
+                'Good luck and have fun!'
+            );
+        });
+
+        abbreviationsButton.addEventListener('click', () => {
+            alert(
+                'Common Number Abbreviations:\n\n' +
+                '1k = 1,000\n' +
+                '1m = 1,000,000\n' +
+                '1b = 1,000,000,000\n' +
+                '1t = 1,000,000,000,000\n\n' +
+                'For example, 16k is 16,000.'
+            );
+        });
+
+        showCodeButton.addEventListener('click', () => {
+            alert(document.documentElement.outerHTML);
+        });
+
+        // Spin Wheel Logic
+        spinWheelButton.addEventListener('click', () => {
+            if (isSpinning || spinWheelButton.disabled) return; // Prevent spinning if already spinning or on cooldown
+            wheelSpinOverlay.style.display = 'flex';
+        });
+
+        spinButton.addEventListener('click', () => {
+            if (isSpinning) return;
+            isSpinning = true;
+            spinButton.disabled = true;
+
+            const numberOfSpins = 5; // How many full rotations the wheel makes
+            const degreesPerSlice = 360 / wheelRewards.length;
+            const winningSliceIndex = Math.floor(Math.random() * wheelRewards.length); // Randomly choose a slice
+            
+            // Calculate final rotation to land on the winning slice, adjusted for pointer
+            // Each slice starts at its index * 60 degrees. Pointer is at the top.
+            // We want the middle of the winning slice to align with the pointer.
+            // Slice 1 (index 0) is from 0 to 60. Middle is 30.
+            // Slice 2 (index 1) is from 60 to 120. Middle is 90.
+            // So, winning slice middle = (winningSliceIndex * degreesPerSlice) + (degreesPerSlice / 2)
+            // To point at this, we need to rotate by (360 - middle) degrees, plus full spins.
+            const targetRotation = (numberOfSpins * 360) + (360 - (winningSliceIndex * degreesPerSlice + degreesPerSlice / 2));
+
+            wheel.style.transform = `rotate(${targetRotation}deg)`;
+
+            setTimeout(() => {
+                isSpinning = false;
+                spinButton.disabled = false;
+                wheelSpinOverlay.style.display = 'none';
+                awardWheelReward(wheelRewards[winningSliceIndex]);
+                startSpinCooldown(); // Start cooldown after award
+            }, 4000); // Match this with the CSS transition duration
+        });
+
+
+        restartButton.addEventListener('click', () => {
+            initGame();
+        });
+
+        reviveButton.addEventListener('click', () => {
+            if (!reviveUsed) {
+                reviveButton.style.display = 'none';
+                reviveOptions.style.display = 'flex';
+                updatePowerupButtons();
+            }
+        });
+
+        // Revive powerup click listeners
+        reviveBombButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.bomb) {
+                coins -= powerupCosts.bomb;
+                coinsElement.textContent = coins;
+                grid = Array.from({ length: rows }, () => Array(cols).fill(0));
+                reviveUsed = true;
+                isGameOver = false;
+                gameOverOverlay.style.display = 'none';
+                drawGrid();
+                updateNextBlock();
+            }
+        });
+
+        reviveSwapButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.swap) {
+                coins -= powerupCosts.swap;
+                coinsElement.textContent = coins;
+                reviveUsed = true;
+                isGameOver = false;
+                gameOverOverlay.style.display = 'none';
+                messageElement.textContent = 'Click on two blocks to swap them.';
+                // Set the active powerup for the swap logic
+                activePowerup = 'swap';
+                firstSwapBlock = null;
+                updatePowerupButtons();
+            }
+        });
+        
+        reviveHammerButton.addEventListener('click', () => {
+            if (coins >= powerupCosts.hammer) {
+                coins -= powerupCosts.hammer;
+                coinsElement.textContent = coins;
+                reviveUsed = true;
+                isGameOver = false;
+                gameOverOverlay.style.display = 'none';
+                messageElement.textContent = 'Click on a block to remove it.';
+                // Set the active powerup for the hammer logic
+                activePowerup = 'hammer';
+                updatePowerupButtons();
+            }
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
