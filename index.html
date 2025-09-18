@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Drop Merge Game Deluxe</title>
+    <style>
+        /* --- General Layout --- */
+        body { margin: 0; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; background-color: #f0f0f0; padding-top: 20px; font-family: sans-serif; }
+        #game-container { display: flex; flex-direction: row; }
+        canvas { border: 1px solid #ccc; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); background-color: #fff; }
+        #sidebar { text-align: center; margin-left: 20px; display: flex; flex-direction: column; align-items: center; width: 140px; }
+
+        /* --- Score and Economy --- */
+        #score-panel { 
+            font-size: 1.2em; 
+            font-weight: bold; 
+            color: #333; 
+            margin-bottom: 20px; 
+            padding: 10px; 
+            background: #fff; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #score-panel div { margin: 5px 0; }
+        
+        /* Coin Bank Specific Styling */
+        #coin-bank { 
+            color: #b8860b; 
+            font-size: 1.5em; 
+            margin-top: 10px;
+            padding: 5px;
+            border: 2px solid gold;
+            border-radius: 5px;
+        }
+
+        /* --- Buttons and Controls --- */
+        .game-button {
+            padding: 10px 15px;
+            font-size: 1em;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin: 5px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .game-button:hover { background-color: #0056b3; }
+        .red-button { background-color: #dc3545; }
+        .red-button:hover { background-color: #a71d2a; }
+        .green-button { background-color: #28a745; }
+        .green-button:hover { background-color: #1e7e34; }
+        .yellow-button { background-color: #ffc107; color: #333; }
+        .yellow-button:hover { background-color: #d39e00; }
+
+        /* --- Modal (Warning/Instructions/Size) --- */
+        .modal {
+            display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); 
+        }
+        .modal-content {
+            background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 450px; text-align: center; border-radius: 10px;
+        }
+        .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+        .close-button:hover, .close-button:focus { color: #000; text-decoration: none; cursor: pointer; }
+        #size-buttons button { margin: 5px; padding: 10px; }
+
+        /* --- Game State Containers (Menu/Game/Wheel) --- */
+        #main-menu, #how-to-play, #spin-wheel-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            z-index: 5;
+            min-width: 300px;
+        }
+
+        #main-menu h1, #how-to-play h1 { color: #333; margin-bottom: 20px; }
+        #main-menu-buttons { display: flex; flex-direction: column; gap: 10px; }
+        #how-to-play p { text-align: left; margin-bottom: 15px; font-size: 0.95em; line-height: 1.4; }
+
+        /* --- Spin Wheel Specific Styling --- */
+        #wheel-canvas { margin: 20px 0; border: none; }
+        #spin-button { margin-top: 15px; padding: 15px 30px; font-size: 1.5em; }
+        #wheel-message { margin-top: 20px; font-size: 1.2em; font-weight: bold; min-height: 30px; }
+        #wheel-back-button { margin-top: 20px; }
+        
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="300" height="500"></canvas>
+        
+        <div id="sidebar">
+            <div id="score-panel">
+                <div id="score-display">Score: 0</div>
+                <div id="coin-bank">💰 0</div>
+            </div>
+
+            <button id="main-menu-button" class="game-button">Main Menu</button>
+            <button id="spin-wheel-button" class="game-button yellow-button">Spin Wheel (100 💰)</button>
+            <button id="size-button" class="game-button">Change Grid Size</button>
+            <button id="reset-button" class="game-button red-button">Reset Game</button>
+            
+            <div id="block-info-area">
+                <div class="block-display" style="margin-top: 20px;">Current Block:</div>
+                <div id="current-block-display" class="block-value">4</div>
+                <div class="block-display" style="margin-top: 10px;">Status:</div>
+                <div id="game-status" class="block-value" style="font-size: 1.2em; color: #0275d8;">Ready</div>
+            </div>
+            
+            <div id="instructions">
+                <p style="font-size: 0.8em; margin-top: 20px; color: #666;">Click/Tap to Drop. Move with Arrows.</p>
+                <p style="font-size: 0.8em; color: #666;">Status: **Click tiles** after power-up!</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="main-menu">
+        <h1>Drop Merge Deluxe</h1>
+        <div id="main-menu-buttons">
+            <button id="start-game-button" class="game-button green-button">Start Game</button>
+            <button id="menu-how-to-play-button" class="game-button">How To Play</button>
+            <button id="menu-size-button" class="game-button">Change Grid Size</button>
+        </div>
+    </div>
+
+    <div id="how-to-play" style="display: none;">
+        <h1>How To Play</h1>
+        <p>1. **Drop & Merge:** Click/Tap to drop the **Current Block** into the column you desire. Merge two blocks of the same number (2+2=4, 4+4=8, etc.) to score points.</p>
+        <p>2. **Power-ups:** Use **SWAP**, **HAMMER**, **BOMB**, and **WILD** blocks strategically to clear the board and create high-value merges. Click tiles to target the effects.</p>
+        <p>3. **Revive:** If you get a Game Over, you can use the **BOMB** block in your queue to clear the board and continue!</p>
+        <p>4. **Coins:** Earn coins to spin the **Spin Wheel** for more rewards!</p>
+        <button id="back-to-menu-button" class="game-button">Back to Menu</button>
+    </div>
+
+    <div id="spin-wheel-container" style="display: none;">
+        <h1>Spin Wheel!</h1>
+        <canvas id="wheel-canvas" width="300" height="300"></canvas>
+        <button id="spin-button" class="game-button green-button">Spin (100 💰)</button>
+        <div id="wheel-message"></div>
+        <button id="wheel-back-button" class="game-button">Back to Game</button>
+    </div>
+
+    <div id="warningModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 style="color: #dc3545;">⚠️ WARNING: Reset Game ⚠️</h2>
+            <p>Are you sure you want to **reset the game**? This will clear your score, coins, and the board.</p>
+            <button id="confirm-reset-button" class="game-button red-button" style="margin-top: 15px;">Yes, Reset Everything</button>
+            <button id="cancel-reset-button" class="game-button" style="margin-top: 10px;">No, Keep Playing</button>
+        </div>
+    </div>
+
+    <div id="sizeModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Change Grid Size</h2>
+            <p>Select a new column size (requires game reset):</p>
+            <div id="size-buttons">
+                <button class="game-button size-option" data-cols="6">6 Columns (Standard)</button>
+                <button class="game-button size-option" data-cols="8">8 Columns (Harder)</button>
+                <button class="game-button size-option" data-cols="10">10 Columns (Expert)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="instructionModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="modal-title"></h2>
+            <p id="modal-text"></p>
+            <button id="revive-button" style="display:none;">Use BOMB to Revive!</button>
+            <p id="modal-subtext" style="font-size: 0.9em; color: #888; margin-top: 10px;">Click 'X' or press ESC to continue.</p>
+        </div>
+    </div>
+
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const coinBankDisplay = document.getElementById('coin-bank');
+        const currentBlockDisplay = document.getElementById('current-block-display');
+        const gameStatusDisplay = document.getElementById('game-status');
+        
+        // Modals & Buttons
+        const warningModal = document.getElementById('warningModal');
+        const sizeModal = document.getElementById('sizeModal');
+        const instructionModal = document.getElementById('instructionModal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalText = document.getElementById('modal-text');
+        const modalSubtext = document.getElementById('modal-subtext');
+        const reviveButton = document.getElementById('revive-button');
+        const resetButton = document.getElementById('reset-button');
+        const sizeButton = document.getElementById('size-button');
+        const confirmResetButton = document.getElementById('confirm-reset-button');
+        const cancelResetButton = document.getElementById('cancel-reset-button');
+        
+        // Main Menu Elements
+        const mainMenuDiv = document.getElementById('main-menu');
+        const howToPlayDiv = document.getElementById('how-to-play');
+        const startGameButton = document.getElementById('start-game-button');
+        const menuHowToPlayButton = document.getElementById('menu-how-to-play-button');
+        const backToMenuButton = document.getElementById('back-to-menu-button');
+        const mainMenuButton = document.getElementById('main-menu-button');
+        const menuSizeButton = document.getElementById('menu-size-button');
+
+        // Spin Wheel Elements
+        const spinWheelContainer = document.getElementById('spin-wheel-container');
+        const wheelCanvas = document.getElementById('wheel-canvas');
+        const wheelCtx = wheelCanvas.getContext('2d');
+        const spinButton = document.getElementById('spin-button');
+        const wheelMessage = document.getElementById('wheel-message');
+        const spinWheelButton = document.getElementById('spin-wheel-button');
+        const wheelBackButton = document.getElementById('wheel-back-button');
+
+        // --- Game Constants & Initial State ---
+        const GAME_STATES = {
+            MAIN_MENU: 'MAIN_MENU',
+            PLAYING: 'PLAYING',
+            PAUSED: 'PAUSED',
+            SPIN_WHEEL: 'SPIN_WHEEL',
+            HOW_TO_PLAY: 'HOW_TO_PLAY'
+        };
+        let gameState = GAME_STATES.MAIN_MENU;
+        let COLS = 6;
+        const ROWS = 10;
+        let TILE_SIZE = canvas.width / COLS;
+        const MERGE_ANIMATION_DURATION = 150;
+        const REVIVE_POWERUP = 'BOMB';
+        const SPIN_COST = 100;
+        const SPIN_REWARDS = [20, 50, 100, 150, 200, 500]; // Coins
+
+        // Tile colors and values (unchanged)
+        const TILE_PROPERTIES = {
+            2: { color: '#eee4da', text: '#776e65' }, 4: { color: '#ede0c8', text: '#776e65' },
+            8: { color: '#f2b179', text: '#f9f6f2' }, 16: { color: '#f59563', text: '#f9f6f2' },
+            32: { color: '#f67c5f', text: '#f9f6f2' }, 64: { color: '#f65e3b', text: '#f9f6f2' },
+            128: { color: '#edcf72', text: '#f9f6f2' }, 256: { color: '#edcc61', text: '#f9f6f2' },
+            512: { color: '#edc850', text: '#f9f6f2' }, 1024: { color: '#edc53f', text: '#f9f6f2' },
+            2048: { color: '#edc22e', text: '#f9f6f2' },
+            
+            'SWAP': { color: '#5cb85c', text: '#fff' }, 
+            'HAMMER': { color: '#f0ad4e', text: '#fff' }, 
+            'BOMB': { color: '#d9534f', text: '#fff' }, 
+            'WILD': { color: '#0275d8', text: '#fff' }
+        };
+        const STARTING_VALUES = [2, 4, 8, 16, 'SWAP', 'HAMMER', 'BOMB', 'WILD'];
+
+        // Game State Variables
+        let grid;
+        let score;
+        let nextTile;
+        let currentTile;
+        let currentX;
+        let isGameOver;
+        let mergeAnimations = [];
+        let activePowerup = null;
+        let powerupTargets = [];
+
+        // Coin Bank Object
+        const CoinBank = {
+            balance: 500,
+            
+            deposit(amount) {
+                if (amount > 0) {
+                    this.balance += amount;
+                    updateDisplays();
+                    return true;
+                }
+                return false;
+            },
+            
+            withdraw(amount) {
+                if (amount > 0 && this.balance >= amount) {
+                    this.balance -= amount;
+                    updateDisplays();
+                    return true;
+                }
+                return false;
+            },
+
+            reset() {
+                this.balance = 0;
+                updateDisplays();
+            },
+
+            setInitialBalance(amount) {
+                this.balance = amount !== undefined ? amount : 500;
+                updateDisplays();
+            }
+        };
+
+        // --- Game Initialization & Reset ---
+
+        function initGame() {
+            grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            score = 0;
+            CoinBank.setInitialBalance(CoinBank.balance);
+            nextTile = generateNewTile();
+            currentTile = generateNewTile();
+            currentX = Math.floor(COLS / 2);
+            isGameOver = false;
+            activePowerup = null;
+            powerupTargets = [];
+            TILE_SIZE = canvas.width / COLS;
+            updateDisplays();
+        }
+        
+        function hardResetGame() {
+            CoinBank.reset();
+            initGame();
+        }
+
+        // --- Utility Functions (Drawing, Tile Generation, etc.) ---
+        
+        function getRandomStartingValue() {
+            const rand = Math.random();
+            if (rand < 0.8) { 
+                return STARTING_VALUES[Math.floor(Math.random() * 4)];
+            } else { 
+                return STARTING_VALUES[Math.floor(Math.random() * 4) + 4];
+            }
+        }
+        function generateNewTile() {
+            const value = getRandomStartingValue();
+            return { value: value, color: TILE_PROPERTIES[value].color };
+        }
+        function getTileProperties(value) {
+            return TILE_PROPERTIES[value] || { color: '#cdc1b4', text: '#776e65' };
+        }
+        
+        function updateScore(points) { score += points; updateDisplays(); }
+        function addCoins(amount) { CoinBank.deposit(amount); } 
+
+        function updateDisplays() {
+            scoreDisplay.textContent = `Score: ${score}`;
+            coinBankDisplay.textContent = `💰 ${CoinBank.balance}`;
+            if (currentTile) {
+                currentBlockDisplay.textContent = currentTile.value;
+                currentBlockDisplay.className = 'block-value ' + (typeof currentTile.value === 'string' ? 'powerup-text' : '');
+            } else {
+                currentBlockDisplay.textContent = '-';
+            }
+            gameStatusDisplay.textContent = activePowerup ? activePowerup : (isGameOver ? 'GAMEOVER' : 'Ready');
+            gameStatusDisplay.style.color = activePowerup ? '#d9534f' : (isGameOver ? '#dc3545' : '#0275d8');
+            
+            spinButton.textContent = `Spin (${SPIN_COST} 💰)`;
+            spinWheelButton.disabled = CoinBank.balance < SPIN_COST;
+        }
+
+        function drawTile(c, r, value) {
+            const props = getTileProperties(value);
+            const x = c * TILE_SIZE; const y = r * TILE_SIZE; const padding = 5;
+            ctx.fillStyle = props.color;
+            ctx.fillRect(x + padding, y + padding, TILE_SIZE - padding * 2, TILE_SIZE - padding * 2);
+            if (value > 0 || typeof value === 'string') {
+                ctx.fillStyle = props.text;
+                ctx.font = `${Math.min(TILE_SIZE / 3, 24)}px Arial Black`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(value, x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            }
+        }
+
+        // 🚀 MODIFIED: Draw Grid with a much thicker, darker grid to be more visible.
+        function drawGrid() {
+            // 1. Draw all the blocks
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    drawTile(c, r, grid[r][c]);
+                }
+            }
+            
+            // 2. Draw Grid Lines (Thick Black Lines)
+            ctx.strokeStyle = '#000000'; // Black lines
+            ctx.lineWidth = 2; // Thicker lines
+            
+            // Vertical lines
+            for (let c = 0; c <= COLS; c++) {
+                const x = c * TILE_SIZE;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // Horizontal lines
+            for (let r = 0; r <= ROWS; r++) {
+                const y = r * TILE_SIZE;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawCurrentTile(c) {
+            const value = currentTile.value;
+            const props = getTileProperties(value);
+            const x = c * TILE_SIZE; const y = 0; const padding = 5;
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 3;
+            ctx.strokeRect(x + padding, y + padding, TILE_SIZE - padding * 2, TILE_SIZE - padding * 2);
+            ctx.fillStyle = props.color; ctx.globalAlpha = 0.8;
+            ctx.fillRect(x + padding, y + padding, TILE_SIZE - padding * 2, TILE_SIZE - padding * 2);
+            ctx.globalAlpha = 1.0; 
+            if (value > 0 || typeof value === 'string') {
+                ctx.fillStyle = props.text;
+                ctx.font = `${Math.min(TILE_SIZE / 3, 24)}px Arial Black`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(value, x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            }
+        }
+        function drawMergeAnimations() {
+             const now = performance.now();
+            mergeAnimations = mergeAnimations.filter(anim => {
+                const elapsed = now - anim.startTime;
+                if (elapsed >= MERGE_ANIMATION_DURATION) return false;
+                const progress = elapsed / MERGE_ANIMATION_DURATION;
+                const scale = 1 + Math.sin(progress * Math.PI) * 0.5;
+                ctx.save();
+                const centerX = (anim.c + 0.5) * TILE_SIZE;
+                const centerY = (anim.r + 0.5) * TILE_SIZE;
+                ctx.translate(centerX, centerY);
+                ctx.scale(scale, scale);
+                ctx.translate(-centerX, -centerY);
+                drawTile(anim.c, anim.r, anim.value);
+                ctx.restore();
+                return true;
+            });
+        }
+        
+        // --- Game Logic (Drop, Merge, Gravity) ---
+        
+        function dropTile() {
+            if (isGameOver || activePowerup) return;
+
+            let dropRow = -1;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (grid[r][currentX] === 0) {
+                    dropRow = r;
+                    break;
+                }
+            }
+
+            if (dropRow >= 0) {
+                let isPowerup = false;
+                if (typeof currentTile.value === 'string') {
+                    isPowerup = true;
+                    activePowerup = currentTile.value;
+                    showPowerupInstructions(activePowerup);
+                } else {
+                    grid[dropRow][currentX] = currentTile.value;
+                    processMerges(dropRow, currentX);
+                    addCoins(Math.floor(currentTile.value / 16)); 
+                }
+                
+                currentTile = nextTile; 
+                nextTile = generateNewTile();
+                currentX = Math.floor(COLS / 2);
+                
+                checkGameOver();
+            } else {
+                checkGameOver();
+            }
+        }
+        
+        function processMerges(r, c) {
+            let merged = true;
+            let currentR = r;
+            let currentC = c;
+            
+            while (merged) {
+                merged = false;
+                let currentValue = grid[currentR][currentC];
+                if (currentValue === 0) break;
+
+                // Check logic (Up, Down, Left, Right)
+                if (currentR > 0 && grid[currentR - 1][currentC] === currentValue) {
+                    merge(currentR, currentC, currentR - 1, currentC);
+                    currentR--; 
+                    merged = true;
+                } else if (currentR < ROWS - 1 && grid[currentR + 1][currentC] === currentValue) {
+                    merge(currentR, currentC, currentR + 1, currentC);
+                    currentR++; 
+                    merged = true;
+                } else if (currentC > 0 && grid[currentR][currentC - 1] === currentValue) {
+                    merge(currentR, currentC, currentR, currentC - 1);
+                    merged = true;
+                } else if (currentC < COLS - 1 && grid[currentR][currentC + 1] === currentValue) {
+                    merge(currentR, cKurrentC, currentR, currentC + 1);
+                    merged = true;
+                }
+            }
+        }
+
+        function merge(r1, c1, r2, c2) {
+            const value = grid[r1][c1];
+            const newValue = value * 2;
+            
+            grid[r1][c1] = newValue;
+            grid[r2][c2] = 0; 
+            
+            updateScore(newValue);
+            addCoins(Math.floor(newValue / 32));
+            
+            mergeAnimations.push({r: r1, c: c1, value: newValue, startTime: performance.now()});
+            applyGravity(c2);
+        }
+        
+        function applyGravity(c) {
+            let nextEmptyRow = ROWS - 1;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (grid[r][c] !== 0) {
+                    if (r !== nextEmptyRow) { grid[nextEmptyRow][c] = grid[r][c]; grid[r][c] = 0; }
+                    nextEmptyRow--;
+                }
+            }
+        }
+
+        // --- Revive & Game Over Logic ---
+
+        function reviveGame() {
+            isGameOver = false;
+            grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+            currentTile = generateNewTile();
+            if (typeof currentTile.value === 'string') { currentTile = generateNewTile(); }
+            closeModal(instructionModal);
+            gameState = GAME_STATES.PLAYING;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function checkGameOver() {
+            let isBoardFull = false;
+             if (grid[0][Math.floor(COLS / 2)] !== 0) {
+                for(let c = 0; c < COLS; c++) {
+                    if (grid[0][c] !== 0) {
+                        isBoardFull = true;
+                        break;
+                    }
+                }
+            }
+             
+            if (isBoardFull) {
+                if (currentTile.value === REVIVE_POWERUP) {
+                    isGameOver = true;
+                    showModal(
+                        "GAME OVER! But Wait...",
+                        `The next block is a **${REVIVE_POWERUP}**! Use it to clear the board and continue your game.`,
+                        true
+                    );
+                } else {
+                    isGameOver = true;
+                    alert(`Game Over! Final Score: ${score}\nTotal Coins: ${CoinBank.balance}`);
+                    gameState = GAME_STATES.MAIN_MENU;
+                    renderGameState();
+                }
+            }
+        }
+
+        // --- Powerup Implementation (Modal, Targeting, Execution) ---
+        
+        function showModal(title, text, showRevive = false) {
+            gameState = GAME_STATES.PAUSED;
+            modalTitle.textContent = title;
+            modalText.textContent = text;
+            reviveButton.style.display = showRevive ? 'block' : 'none';
+            modalSubtext.style.display = showRevive ? 'none' : 'block';
+            instructionModal.style.display = 'block';
+        }
+
+        function closeModal(modalElement) {
+            modalElement.style.display = 'none';
+            if (modalElement === instructionModal && !isGameOver) {
+                gameState = GAME_STATES.PLAYING;
+            }
+        }
+        
+        function handleTileClick(event) {
+            if (isGameOver || gameState !== GAME_STATES.PLAYING) {
+                return; 
+            }
+            
+            if (!activePowerup) {
+                dropTile();
+                return;
+            }
+            
+            // Powerup targeting logic...
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const c = Math.floor(x / TILE_SIZE);
+            const r = Math.floor(y / TILE_SIZE);
+
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+
+            powerupTargets.push({r, c});
+            closeModal(instructionModal); 
+
+            if (activePowerup === 'HAMMER' || activePowerup === 'BOMB' || activePowerup === 'WILD') {
+                if (powerupTargets.length === 1) { executePowerup(); }
+            } else if (activePowerup === 'SWAP') {
+                if (powerupTargets.length === 2) { executePowerup(); }
+            }
+        }
+
+        function executePowerup() {
+            const P1 = powerupTargets[0];
+            let P2 = powerupTargets[1];
+            
+            switch (activePowerup) {
+                case 'SWAP':
+                    const temp = grid[P1.r][P1.c];
+                    grid[P1.r][P1.c] = grid[P2.r][P2.c];
+                    grid[P2.r][P2.c] = temp;
+                    processMerges(P1.r, P1.c);
+                    processMerges(P2.r, P2.c);
+                    break;
+                case 'HAMMER':
+                    if (grid[P1.r][P1.c] !== 0) { grid[P1.r][P1.c] = 0; applyGravity(P1.c); }
+                    break;
+                case 'BOMB':
+                    for (let r = 0; r < ROWS; r++) { grid[r][P1.c] = 0; }
+                    break;
+                case 'WILD':
+                    if (grid[P1.r][P1.c] > 0) {
+                        const newValue = grid[P1.r][P1.c] * 2;
+                        grid[P1.r][P1.c] = newValue;
+                        updateScore(newValue);
+                        processMerges(P1.r, P1.c); 
+                    } else {
+                        grid[P1.r][P1.c] = 2;
+                    }
+                    break;
+            }
+
+            activePowerup = null;
+            powerupTargets = [];
+        }
+
+        // --- Grid Size Logic ---
+
+        document.querySelectorAll('.size-option').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const newCols = parseInt(e.target.getAttribute('data-cols'));
+                COLS = newCols;
+                canvas.width = 300;
+                TILE_SIZE = canvas.width / COLS;
+                closeModal(sizeModal);
+                hardResetGame();
+                gameState = GAME_STATES.PLAYING;
+                renderGameState();
+            });
+        });
+
+        // --- Spin Wheel Logic ---
+        const colors = ["#f8b195", "#f67280", "#c06c84", "#6c5b7b", "#355c7d", "#99b898"];
+        function drawWheel() {
+            const arc = Math.PI / (SPIN_REWARDS.length / 2);
+            const radius = wheelCanvas.width / 2;
+            wheelCtx.clearRect(0, 0, wheelCanvas.width, wheelCanvas.height);
+            wheelCtx.strokeStyle = '#333';
+            wheelCtx.lineWidth = 2;
+            wheelCtx.font = 'bold 16px sans-serif';
+
+            SPIN_REWARDS.forEach((reward, i) => {
+                const angle = i * arc * 2;
+                wheelCtx.fillStyle = colors[i % colors.length];
+
+                wheelCtx.beginPath();
+                wheelCtx.arc(radius, radius, radius, angle, angle + arc * 2);
+                wheelCtx.lineTo(radius, radius);
+                wheelCtx.fill();
+                wheelCtx.stroke();
+                
+                // Draw text
+                wheelCtx.save();
+                wheelCtx.fillStyle = '#fff';
+                wheelCtx.translate(radius, radius);
+                wheelCtx.rotate(angle + arc);
+                wheelCtx.textAlign = 'right';
+                wheelCtx.fillText(`+${reward} 💰`, radius * 0.9, 0);
+                wheelCtx.restore();
+            });
+
+            // Draw pointer (simple triangle)
+            wheelCtx.fillStyle = '#333';
+            wheelCtx.beginPath();
+            wheelCtx.moveTo(radius - 10, 0);
+            wheelCtx.lineTo(radius + 10, 0);
+            wheelCtx.lineTo(radius, 20);
+            wheelCtx.fill();
+        }
+
+        spinButton.addEventListener('click', () => {
+            if (!CoinBank.withdraw(SPIN_COST)) {
+                wheelMessage.textContent = "Not enough coins!";
+                return;
+            }
+            
+            const winningIndex = Math.floor(Math.random() * SPIN_REWARDS.length);
+            const prize = SPIN_REWARDS[winningIndex];
+            
+            const numSegments = SPIN_REWARDS.length;
+            const segmentAngle = 360 / numSegments;
+            const targetAngle = 360 * 5 + (360 - (winningIndex * segmentAngle + segmentAngle / 2));
+            
+            spinButton.disabled = true;
+            wheelMessage.textContent = "Spinning...";
+
+            wheelCanvas.style.transition = 'transform 4s cubic-bezier(0.2, 0.8, 0.2, 1)';
+            wheelCanvas.style.transform = `rotate(${targetAngle}deg)`;
+
+            setTimeout(() => {
+                wheelCanvas.style.transition = 'none';
+                wheelCanvas.style.transform = `rotate(${targetAngle % 360}deg)`;
+                CoinBank.deposit(prize);
+                wheelMessage.textContent = `🎉 You won ${prize} coins!`;
+                spinButton.disabled = false;
+            }, 4000);
+        });
+
+        // --- State Management ---
+        
+        function renderGameState() {
+            const isPlaying = gameState === GAME_STATES.PLAYING || gameState === GAME_STATES.PAUSED;
+            const isMenu = gameState === GAME_STATES.MAIN_MENU;
+            const isWheel = gameState === GAME_STATES.SPIN_WHEEL;
+            const isHowToPlay = gameState === GAME_STATES.HOW_TO_PLAY;
+
+            // Visibility
+            mainMenuDiv.style.display = isMenu ? 'block' : 'none';
+            spinWheelContainer.style.display = isWheel ? 'block' : 'none';
+            howToPlayDiv.style.display = isHowToPlay ? 'block' : 'none';
+            document.getElementById('game-container').style.display = isPlaying || gameState === GAME_STATES.PAUSED ? 'flex' : 'none';
+            
+            // Update sidebar buttons
+            mainMenuButton.style.display = isPlaying ? 'block' : 'none';
+            
+            if (isWheel) {
+                drawWheel();
+            }
+
+            if (isPlaying) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // --- Event Listeners ---
+        startGameButton.addEventListener('click', () => { 
+            gameState = GAME_STATES.PLAYING; 
+            initGame();
+            renderGameState(); 
+        });
+        
+        // Reset/Warning buttons
+        resetButton.addEventListener('click', () => { 
+            if (gameState === GAME_STATES.PLAYING) {
+                warningModal.style.display = 'block'; 
+                gameState = GAME_STATES.PAUSED;
+            }
+        });
+        confirmResetButton.addEventListener('click', () => { 
+            hardResetGame();
+            closeModal(warningModal);
+            gameState = GAME_STATES.MAIN_MENU;
+            renderGameState();
+        });
+        cancelResetButton.addEventListener('click', () => { 
+            closeModal(warningModal); 
+            gameState = GAME_STATES.PLAYING;
+        });
+
+        // Grid Size buttons
+        [sizeButton, menuSizeButton].forEach(btn => btn.addEventListener('click', () => { 
+            sizeModal.style.display = 'block'; 
+            gameState = GAME_STATES.PAUSED;
+        }));
+
+        // Menu buttons
+        mainMenuButton.addEventListener('click', () => {
+            gameState = GAME_STATES.MAIN_MENU;
+            renderGameState();
+        });
+        menuHowToPlayButton.addEventListener('click', () => {
+            gameState = GAME_STATES.HOW_TO_PLAY;
+            renderGameState();
+        });
+        backToMenuButton.addEventListener('click', () => {
+            gameState = GAME_STATES.MAIN_MENU;
+            renderGameState();
+        });
+        
+        // Spin Wheel navigation
+        spinWheelButton.addEventListener('click', () => {
+            if (CoinBank.balance >= SPIN_COST) {
+                gameState = GAME_STATES.SPIN_WHEEL;
+                wheelMessage.textContent = "Click 'Spin' to try your luck!";
+                renderGameState();
+            }
+        });
+        wheelBackButton.addEventListener('click', () => {
+            gameState = GAME_STATES.PLAYING;
+            renderGameState();
+        });
+        
+        // Modal close buttons
+        document.querySelectorAll('.close-button').forEach(btn => {
+            btn.onclick = (e) => closeModal(e.target.closest('.modal'));
+        });
+        reviveButton.onclick = reviveGame;
+        window.onclick = function(event) {
+            if (event.target == warningModal) { closeModal(warningModal); gameState = GAME_STATES.PLAYING; }
+            if (event.target == sizeModal) { closeModal(sizeModal); gameState = GAME_STATES.PLAYING; }
+            if (event.target == instructionModal) { closeModal(instructionModal); }
+        }
+
+        // --- Input Handlers ---
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(m => {
+                    if (m.style.display === 'block') closeModal(m);
+                });
+            }
+            if (gameState !== GAME_STATES.PLAYING) return;
+            
+            if (e.key === 'ArrowLeft') { currentX = Math.max(0, currentX - 1); } 
+            else if (e.key === 'ArrowRight') { currentX = Math.min(COLS - 1, currentX + 1); } 
+            else if (e.key === 'ArrowDown' || e.key === ' ') { dropTile(); }
+        });
+
+        canvas.addEventListener('click', handleTileClick);
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameState !== GAME_STATES.PLAYING || activePowerup) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const newX = Math.floor(x / TILE_SIZE);
+            if (newX >= 0 && newX < COLS) { currentX = newX; }
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameState !== GAME_STATES.PLAYING || activePowerup || !e.touches[0]) return;
+            e.preventDefault(); 
+            const rect = canvas.getBoundingClientRect();
+            const x = e.touches[0].clientX - rect.left;
+            const newX = Math.floor(x / TILE_SIZE);
+            if (newX >= 0 && newX < COLS) { currentX = newX; }
+        });
+
+
+        // --- Game Loop ---
+        function gameLoop(timestamp) {
+            if (gameState !== GAME_STATES.PLAYING && gameState !== GAME_STATES.PAUSED) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            if (!activePowerup && !isGameOver) { drawCurrentTile(currentX); }
+            drawMergeAnimations();
+            
+            updateDisplays(); 
+
+            if (gameState === GAME_STATES.PLAYING || gameState === GAME_STATES.PAUSED) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Start the game in the Main Menu
+        CoinBank.setInitialBalance(500);
+        initGame();
